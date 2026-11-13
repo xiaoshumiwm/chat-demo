@@ -1,10 +1,18 @@
 import { create } from 'zustand'
 import { createId } from '../../utils/id.js'
 import { ApiError, streamMessage } from '../api/client.js'
-import type { ChatModel, CreateMessageRequest } from '../api/types.js'
+import { searchWithDeepSeek } from '../api/search.js'
+import { DEFAULT_DEEPSEEK_MODEL } from '../api/provider.js'
+import type { ApiProvider } from '../api/provider.js'
+import type { CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
-import { useSettings } from '../settings.js'
+import {
+  getAttachmentProvider,
+  getChatProvider,
+  getDeepSeekExtensionProvider,
+  useSettings,
+} from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
 import {
@@ -32,10 +40,25 @@ import {
   type UserMessage,
 } from './types.js'
 
-/** deepseek-flash 同时支持深度思考与图片输入 */
-const MODEL: ChatModel = 'deepseek-flash'
-/** 所有生成请求统一携带的助手身份说明 */
-const SYSTEM_PROMPT = '该助手为DeepSeek，由深度求索公司创造。'
+/** DeepSeek 的默认模型；自定义服务请在设置中填写模型名称 */
+const DEFAULT_MODEL = DEFAULT_DEEPSEEK_MODEL
+/** DeepSeek 请求的助手身份说明 */
+const DEEPSEEK_SYSTEM_PROMPT = '该助手为DeepSeek，由深度求索公司创造。'
+/** 第三方 OpenAI 兼容服务的通用身份说明 */
+const OPENAI_SYSTEM_PROMPT = 'You are a helpful assistant.'
+
+/** OpenAI 兼容接口没有服务端标题扩展，用首条提问生成一个简短标题。 */
+const createLocalTitle = (question: UserMessage): string => {
+  const source = question.content.trim() || question.files[0]?.name || ''
+  const line =
+    source
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .find((item) => !!item) ?? ''
+  const chars = [...line]
+  return chars.length > 30 ? `${chars.slice(0, 30).join('')}…` : line
+}
+
 /** 保留最近打开的详情；当前会话、生成中及尚未成功保存的会话不淘汰。 */
 const SESSION_CACHE_LIMIT = 5
 /** 安全审核固定开启，所有请求都走扩展模式 */
@@ -255,12 +278,12 @@ export const bindChatPersistence = () => {
 
 /** 按当前开关创建回复：深度思考对应 thinking，智能搜索控制 deepseek_web_search。 */
 const createReply = (): AssistantMessage => {
-  const { thinking, search } = useSettings.getState()
+  const { thinking, search, model, apiFormat } = useSettings.getState()
   return {
     id: createId(),
     role: 'assistant',
     createdAt: Date.now(),
-    model: MODEL,
+    model: model || (apiFormat === 'deepseek' ? DEFAULT_MODEL : ''),
     thinking,
     search,
     prefix: true,
@@ -705,11 +728,11 @@ export const continueReply = (sessionId: string, messageId: string) => {
   ) {
     return
   }
-  const { thinking, search } = useSettings.getState()
+  const { thinking, search, model } = useSettings.getState()
   const reply: AssistantMessage = {
     ...previous,
-    // 未记录请求配置的回复，续写时使用默认模型和当前开关。
-    model: previous.model ?? MODEL,
+    // 续写使用当前服务与模型；未记录请求配置时回退到默认值。
+    model: model || previous.model || DEFAULT_MODEL,
     thinking: previous.thinking ?? thinking,
     search: previous.search ?? search,
     status: 'pending',
@@ -776,7 +799,10 @@ const saveServerIds = (sessionId: string, serverIds: Map<string, string>) => {
  * 附件的服务端 id：已有直接用；正在上传的等待同一任务；否则读取本地原件补传。
  * 本地也没有原件（导入的文档附件只有元数据）时返回 null，该附件只展示、不进入请求。
  */
-const ensureServerId = async (apiKey: string, file: FileAttachment): Promise<string | null> => {
+const ensureServerId = async (
+  provider: ApiProvider,
+  file: FileAttachment
+): Promise<string | null> => {
   if (file.serverId) {
     return file.serverId
   }
@@ -788,7 +814,7 @@ const ensureServerId = async (apiKey: string, file: FileAttachment): Promise<str
   if (!blob) {
     return null
   }
-  return uploadAttachment(apiKey, file.id, blob, file.name, file.isImage)
+  return uploadAttachment(provider, file.id, blob, file.name, file.isImage)
 }
 
 /** 用会话里的最新消息替换请求快照：重传前会重置附件的 serverId，快照必须跟着更新 */
@@ -818,7 +844,11 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   // 服务端判定 file_id 失效时会清掉会话里的 serverId，先用最新消息替换请求快照，
   // 否则快照里仍是旧 id，补传会直接复用它。
   request = refreshRequest(sessionId, request)
-  const apiKey = useSettings.getState().apiKey ?? ''
+  // OpenAI 兼容接口不接受 DeepSeek 的 file_id；没有可用文件服务时按纯文本发送。
+  const provider = getAttachmentProvider()
+  if (!provider) {
+    return request
+  }
   const serverIds = new Map<string, string>()
   // 停止生成立即生效；上传本身不取消（输入框与其他消息可能共用同一任务），完成后照常写回 serverId
   const aborted = new Promise<never>((_, reject) => {
@@ -826,7 +856,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   })
   const uploads = Promise.allSettled(
     request.question.files.map(async (file) => {
-      const serverId = await ensureServerId(apiKey, file)
+      const serverId = await ensureServerId(provider, file)
       if (serverId) {
         serverIds.set(file.id, serverId)
       }
@@ -854,7 +884,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   for (const file of pending.values()) {
     signal.throwIfAborted()
     try {
-      const serverId = await Promise.race([ensureServerId(apiKey, file), aborted])
+      const serverId = await Promise.race([ensureServerId(provider, file), aborted])
       if (serverId) {
         serverIds.set(file.id, serverId)
         saveServerIds(sessionId, new Map([[file.id, serverId]]))
@@ -983,12 +1013,37 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         const prepared = await prepareFiles(sessionId, request, controller.signal)
         preparing = false
         // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
-        const latestReminder = prepared.prefix
-          ? prepared.prefix.latestReminder
-          : createLatestReminder(useSettings.getState())
+        const settings = useSettings.getState()
+        const provider = getChatProvider()
+        if (!provider) {
+          throw new ApiError('http', { key: 'apiKeyInvalidRetry' }, 401)
+        }
+        // 三方基模通过工具调用请求搜索，具体搜索由已配置的 DeepSeek 服务执行。
+        const searchProvider =
+          initial.search && provider.format === 'openai' ? getDeepSeekExtensionProvider() : null
+        const search = searchProvider
+          ? (queries: string[], searchSignal: AbortSignal) =>
+              searchWithDeepSeek(searchProvider, queries, searchSignal)
+          : undefined
+        const deepseek = provider.format === 'deepseek'
+        const latestReminder = prepared.prefix?.latestReminder ?? createLatestReminder(settings)
         reply = { ...reply, latestReminder }
         updateReply(sessionId, reply)
         persist(sessionId)
+        // 非 DeepSeek 接口没有自动标题，首轮提问后立即写入本地标题。
+        if (
+          !deepseek &&
+          titleRequests.has(controller) &&
+          !controller.signal.aborted &&
+          !get().importingHistory
+        ) {
+          const session = getSession(sessionId)
+          const title = session && !session.title ? createLocalTitle(prepared.question) : ''
+          if (title) {
+            updateSession(sessionId, (current) => (current.title ? current : { ...current, title }))
+            titleRequests.delete(controller)
+          }
+        }
         const messages = toRequestMessages(
           prepared.history,
           prepared.question,
@@ -997,17 +1052,18 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           latestReminder
         )
         const events = streamMessage(
-          useSettings.getState().apiKey ?? '',
+          provider,
           {
-            model: initial.model ?? MODEL,
-            system: SYSTEM_PROMPT,
+            model: provider.model || initial.model || DEFAULT_MODEL,
+            system: deepseek ? DEEPSEEK_SYSTEM_PROMPT : OPENAI_SYSTEM_PROMPT,
             messages,
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,
-            tools: serverTools(initial.search ?? false),
-            ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
+            tools: deepseek ? serverTools(initial.search ?? false) : [],
+            ...(deepseek && titleRequests.has(controller) ? { title: { enabled: true } } : {}),
           },
-          controller.signal
+          controller.signal,
+          search
         )
         const blockIndexes = new Map<number, number>()
         for await (const event of events) {

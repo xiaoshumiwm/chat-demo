@@ -39,15 +39,25 @@ export const exportHistory = (): Promise<{ name: string; blob: Blob }> =>
     return { name: backupFileName(now), blob }
   })
 
+export type HistoryImportResult = {
+  /** 成功导入的会话数 */
+  count: number
+  /** 被丢弃的、当前版本无法识别的内容片段数 */
+  warnings: number
+}
+
 /**
  * 确认覆盖后调用：先检查 ZIP 格式与版本，校验失败时保留正在生成的回答；
- * 通过后从 ZIP 流式写入暂存，成功才替换原有会话与图片原件。返回导入的会话数。
+ * 通过后从 ZIP 流式写入暂存，成功才替换原有会话与图片原件。
+ * 不兼容的内容片段会丢弃，并把数量返回给界面提示。
  */
-export const importHistory = (file: File): Promise<number> =>
+export const importHistory = (file: File): Promise<HistoryImportResult> =>
   enqueueBackup(async () => {
-    const { checkArchiveFormat, importArchive } = await import('./history/importArchive.js')
+    const { checkArchiveFormat, getDroppedFragments, importArchive } =
+      await import('./history/importArchive.js')
     await checkArchiveFormat(file)
-    return replaceHistory(() => importArchive(file))
+    const count = await replaceHistory(() => importArchive(file))
+    return { count, warnings: getDroppedFragments() }
   })
 
 /** 确认删除后调用：以空历史原子替换全部本地会话与附件，保留 API Key 和其他设置。 */

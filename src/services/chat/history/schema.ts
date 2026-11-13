@@ -185,12 +185,22 @@ const readFragment: Read<Fragment> = (value) => {
   }
 }
 
+/** 导入期间丢弃的片段数；由导入入口重置并读取，用于向用户给出兼容性提示。 */
+let droppedFragments = 0
+
+export const resetDroppedFragments = () => {
+  droppedFragments = 0
+}
+
+export const getDroppedFragments = () => droppedFragments
+
 /** 单个内容片段不兼容不影响其余消息；容器、元数据和后续消息树校验仍严格执行。 */
 const fragment: Read<Fragment | null> = (value) => {
   try {
     return readFragment(value)
   } catch (error) {
     if (error instanceof BackupError && error.key === 'backupIncomplete') {
+      droppedFragments += 1
       return null
     }
     throw error

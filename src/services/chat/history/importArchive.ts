@@ -2,7 +2,14 @@ import * as db from '../db.js'
 import { BackupError, fail } from './errors.js'
 import type { SessionIndexEntry } from './format.js'
 import { INDEX_PATH, MANIFEST_PATH, USER_PATH, parseSessionPath, sessionFilesDir } from './paths.js'
-import { checkManifest, readSessionFile, readSessionIndex } from './schema.js'
+import {
+  checkManifest,
+  readSessionFile,
+  readSessionIndex,
+  resetDroppedFragments,
+} from './schema.js'
+
+export { getDroppedFragments } from './schema.js'
 import { toLocalSession } from './toLocal.js'
 import {
   ArchiveError,
@@ -82,6 +89,7 @@ export const importArchive = async (file: File): Promise<void> => {
   if (!(await isZipFile(file))) {
     fail('backupUnrecognized')
   }
+  resetDroppedFragments()
   const imported = new Set<string>()
   const images = new Map<string, string>()
   /** 已保存的原件：文件 ID → MIME。同一图片出现在多个会话目录时只保存一次。 */

@@ -30,14 +30,19 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 ## Features
 
 - Multiple conversations with automatic titles, renaming, and deletion; edit prompts, regenerate replies, and switch between message branches.
+- Configurable chat API: use DeepSeek, or an OpenAI-compatible base URL and API Key. Models can be loaded from `/v1/models` or entered manually.
 - Streaming replies, deep thinking, smart search, link reading, and source citations; stop generation or continue eligible replies.
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import and export.
 
+## Custom API provider
+
+Settings → Data → Chat API accepts any OpenAI-compatible base URL. Enter an API Key and either load models from `/v1/models` or type a model name manually. Third-party models can call a `deepseek_web_search` tool for web search; configure a separate DeepSeek API Key to execute search, read-aloud, and voice input. Chat titles are generated locally for OpenAI-compatible APIs, and the configured date/location context is injected into the system message. File attachments remain limited to the DeepSeek API format.
+
 ## Data and storage
 
-Your API key and settings are stored in the browser's localStorage. Conversations and original attachments are stored in IndexedDB. Local data is isolated by browser profile and site origin. Sending messages, uploading attachments, and using speech features sends the relevant content to the configured API service.
+Your API keys and settings are stored in the browser's localStorage. Conversations and original attachments are stored in IndexedDB. Local data is isolated by browser profile and site origin. Sending messages, uploading attachments, and using speech features sends the relevant content to the configured API service.
 
 History import and export in Settings use ZIP archives. After confirmation and successful validation, importing replaces all local conversations and attachments. Exports include conversations and locally available original images, but exclude API keys, settings, and original non-image attachments. See the [history import/export documentation (Chinese)](src/services/chat/history/README.md) for the archive format and preservation details.
 
@@ -53,9 +58,9 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | `pnpm lint`   | Lint with oxlint             |
 | `pnpm format` | Format with oxfmt            |
 
-[rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
+[rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` as the initial base URL. It can also be changed at runtime in Settings; `createConfig({ apiOrigin, devServer })` only changes the default and development server proxy.
 
-Chat uses `deepseek-flash` by default through Anthropic-compatible Messages / Files APIs. Speech features use ASR / TTS endpoints. Requests include extensions for search, link reading, titles, and `latest_reminder`, so the configured service must support the corresponding capabilities. Supported attachment formats are determined by server-side validation.
+DeepSeek uses `deepseek-flash` by default through Anthropic-compatible Messages / Files APIs. Custom OpenAI-compatible services use `/v1/chat/completions` and only guarantee text chat streaming. When the chat API is not DeepSeek, configure a separate DeepSeek API Key in Settings to enable read-aloud, voice input, and web search. Search is exposed to the third-party model as a `deepseek_web_search` tool and executed by DeepSeek; the configured date/location context is injected into the system message, and titles are generated locally. Attachments still require the DeepSeek chat format.
 
 ```text
 src/

@@ -30,10 +30,15 @@ pnpm build
 ## 功能
 
 - 多会话、自动标题、重命名与删除；编辑提问、重新生成和切换消息分支。
+- 可配置对话接口：支持 DeepSeek，也支持任意 OpenAI 兼容的接口地址和 API Key；模型可通过 `/v1/models` 读取或手动填写。
 - 流式回答、深度思考、智能搜索、链接阅读与来源引用；支持停止和符合条件的继续生成。
 - 附件上传、粘贴与拖拽，语音输入和回复朗读；移动端录音时输入框首行显示实时频谱。
 - Markdown、代码高亮、KaTeX 公式和 Mermaid 图表。
 - 简体中文与英文、浅色与深色主题、移动端布局、位置设置、历史导入导出。
+
+## 自定义 API
+
+设置 → 数据管理 → 对话接口支持任意 OpenAI 兼容的接口地址。填写 API Key 后，可通过 `/v1/models` 读取模型，也可以手动填写模型名。三方模型可调用 `deepseek_web_search` 工具执行网页搜索；额外配置 DeepSeek API Key 后即可使用搜索、朗读和语音输入。OpenAI 兼容接口的对话标题由本地生成，日期与位置信息会注入 system 消息。附件上传仍只支持 DeepSeek 接口格式。
 
 ## 数据
 
@@ -53,9 +58,9 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm lint`   | oxlint 检查         |
 | `pnpm format` | oxfmt 格式化        |
 
-[rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
+[rspack.config.ts](rspack.config.ts) 以 `https://api.deepseek.com` 作为初始地址，运行时的接口地址可在设置中修改；`createConfig({ apiOrigin, devServer })` 只改变默认值和开发服务器代理。
 
-聊天默认使用 `deepseek-flash`，通过 Anthropic 兼容的 Messages / Files API 通信；语音使用 ASR / TTS 接口。请求使用搜索、链接阅读、标题和 `latest_reminder` 等扩展，接入服务需支持相应能力。附件实际支持的格式以服务端校验为准。
+DeepSeek 默认使用 `deepseek-flash`，通过 Anthropic 兼容的 Messages / Files API 通信。第三方 OpenAI 兼容服务使用 `/v1/chat/completions`，仅保证文本对话与流式输出。主接口不是 DeepSeek 时，可在设置中单独配置 DeepSeek API Key，以继续使用朗读、语音输入和联网搜索：搜索以 `deepseek_web_search` 工具暴露给三方模型，由 DeepSeek 执行；日期与位置信息会注入 system 消息，标题由本地生成。附件仍需要 DeepSeek 对话接口。
 
 ```text
 src/

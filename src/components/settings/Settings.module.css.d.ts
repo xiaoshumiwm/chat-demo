@@ -21,6 +21,14 @@ declare const styles: {
   readonly "themeOptionSelected": string;
   readonly "description": string;
   readonly "error": string;
+  readonly "provider": string;
+  readonly "providerIntro": string;
+  readonly "field": string;
+  readonly "fieldLabel": string;
+  readonly "textInput": string;
+  readonly "providerActions": string;
+  readonly "providerDivider": string;
+  readonly "providerTransfer": string;
   readonly "apiKey": string;
   readonly "apiKeySaved": string;
   readonly "apiKeyInput": string;

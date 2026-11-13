@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { TranslationMessage } from '../../i18n/index.js'
+import type { ApiProvider } from '../api/provider.js'
 import { createId } from '../../utils/id.js'
 import {
   cancelUpload,
@@ -46,10 +47,10 @@ const updateDraft = (sessionId: string | null, update: (draft: Draft) => Draft) 
 export const setDraftText = (sessionId: string | null, text: string) =>
   updateDraft(sessionId, (draft) => ({ ...draft, text }))
 
-const upload = (attachment: DraftAttachment, apiKey: string) => {
+const upload = (attachment: DraftAttachment, provider: ApiProvider) => {
   // 上传任务负责记录错误，输入框的附件卡片展示失败及重试入口。
   void uploadAttachment(
-    apiKey,
+    provider,
     attachment.id,
     attachment.file,
     attachment.file.name,
@@ -61,7 +62,7 @@ const upload = (attachment: DraftAttachment, apiKey: string) => {
 export const addDraftFiles = (
   sessionId: string | null,
   files: File[],
-  apiKey: string
+  provider: ApiProvider
 ): TranslationMessage | null => {
   if (files.length === 0) {
     return null
@@ -80,18 +81,18 @@ export const addDraftFiles = (
     }
   })
   updateDraft(sessionId, (draft) => ({ ...draft, attachments: [...draft.attachments, ...added] }))
-  added.forEach((attachment) => upload(attachment, apiKey))
+  added.forEach((attachment) => upload(attachment, provider))
   return null
 }
 
 export const retryDraftAttachment = (
   sessionId: string | null,
   attachmentId: string,
-  apiKey: string
+  provider: ApiProvider
 ) => {
   const attachment = getDraft(sessionId).attachments.find((item) => item.id === attachmentId)
   if (attachment) {
-    upload(attachment, apiKey)
+    upload(attachment, provider)
   }
 }
 

@@ -3,7 +3,7 @@ import type { TranslationMessage } from '../../i18n/index.js'
 import { ApiError } from '../api/client.js'
 import { classifyApiError } from '../api/errors.js'
 import { synthesize, TTS_SAMPLE_RATE } from '../api/speech.js'
-import { useSettings } from '../settings.js'
+import { getDeepSeekExtensionProvider, useSettings } from '../settings.js'
 
 /**
  * 朗读：同一时间只读一条回复。
@@ -87,19 +87,24 @@ export const toggleReadAloud = (
   if (reading === messageId) {
     return
   }
+  const provider = getDeepSeekExtensionProvider()
+  if (!provider) {
+    onError(new ApiError('protocol', { key: 'speechRequiresDeepSeek' }))
+    return
+  }
   const controller = new AbortController()
   const context = new AudioContext({ sampleRate: TTS_SAMPLE_RATE })
   current = { controller, context }
   useReadAloud.setState({ messageId, status: 'loading' })
   // 音色在开始朗读时读取，设置中切换后下一次朗读生效
-  const { apiKey, ttsVoice } = useSettings.getState()
+  const { ttsVoice } = useSettings.getState()
 
   void (async () => {
     let nextTime = 0
     let lastSource: AudioBufferSourceNode | null = null
     let rest = new Uint8Array(0)
     try {
-      const stream = await synthesize(apiKey ?? '', text, ttsVoice, controller.signal)
+      const stream = await synthesize(provider, text, ttsVoice, controller.signal)
       const reader = stream.getReader()
       controller.signal.addEventListener('abort', () => void reader.cancel().catch(() => {}))
       for (;;) {

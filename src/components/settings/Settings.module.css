@@ -204,6 +204,86 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
+.provider {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.providerIntro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.textInput {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--ds-control-height-xl);
+  padding: 0 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 22px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+
+  &:focus {
+    border-color: var(--dsw-alias-brand-primary);
+  }
+
+  &::placeholder {
+    color: var(--dsw-alias-label-caption);
+  }
+}
+
+.providerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.providerDivider {
+  height: 1px;
+  margin: 6px 0;
+  background-color: var(--dsw-alias-border-l2-darkmode-thin);
+}
+
+.providerTransfer {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  box-shadow: inset 0 1px 0 0 var(--dsw-alias-border-l2-darkmode-thin);
+}
+
+.providerTransfer .text {
+  padding-right: 16px;
+}
+
+.providerTransfer .providerActions {
+  flex: 1 0 auto;
+}
+
 .apiKey {
   display: flex;
   flex-direction: column;
@@ -438,5 +518,33 @@
     white-space: normal;
     overflow-wrap: anywhere;
     max-width: 100%;
+  }
+}
+
+@media not all and (min-width: 768px) {
+  .textInput {
+    height: 52px;
+    border: none;
+    border-radius: 40px;
+    background-color: var(--dsw-specific-login-input);
+    font-size: 16px;
+  }
+
+  .providerActions {
+    justify-content: flex-start;
+  }
+
+  .providerActions > button {
+    min-height: 44px;
+  }
+
+  .providerTransfer .text {
+    flex-basis: 100%;
+    padding-right: 0;
+  }
+
+  .providerTransfer .providerActions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

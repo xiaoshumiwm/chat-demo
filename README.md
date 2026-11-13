@@ -40,40 +40,9 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 
 Settings → Data → Chat API accepts any OpenAI-compatible base URL. Enter an API Key and either load models from `/v1/models` or type a model name manually. Third-party models can call a `deepseek_web_search` tool for web search; configure a separate DeepSeek API Key to execute search, read-aloud, and voice input. Chat titles are generated locally for OpenAI-compatible APIs, and the configured date/location context is injected into the system message. File attachments remain limited to the DeepSeek API format.
 
-### Local proxy for CORS
+### Static hosting limitation
 
-Some API providers reject browser requests because they do not return CORS headers. The bundled proxy serves `dist/` and forwards `/proxy/*` to a target service:
-
-```sh
-pnpm build
-TARGET_BASE=https://developer.amd.com.cn/radeon/api pnpm proxy
-```
-
-Open `http://127.0.0.1:8787` and use this base URL in Settings:
-
-```text
-http://127.0.0.1:8787/proxy
-```
-
-`TARGET_BASE` should be the service root without `/v1`; a trailing `/v1` is stripped automatically. To switch providers without restarting, encode the target in the URL:
-
-```sh
-node -e "console.log('http://127.0.0.1:8787/proxy/'+Buffer.from(process.argv[1]).toString('base64url'))" https://developer.amd.com.cn/radeon/api
-```
-
-Paste the output as the base URL. The proxy listens on `127.0.0.1` by default; do not expose it to the public internet.
-
-### Static release and hosted proxies
-
-A static ZIP or GitHub Pages deployment has no backend, so it cannot run `scripts/proxy.mjs` by itself. Either serve the static build through the local proxy (`pnpm proxy`), or deploy a hosted proxy once and point the static release at it.
-
-A ready-to-deploy Cloudflare Worker example is available at [`deploy/cloudflare-worker.js`](deploy/cloudflare-worker.js):
-
-1. Create a Worker and set `TARGET_BASE` to the API service root, for example `https://developer.amd.com.cn/radeon/api`.
-2. Set `ALLOWED_ORIGIN` to the static release origin, for example `https://xiaoshumiwm.github.io`.
-3. In the static app, use `https://<worker-host>/proxy` as the base URL, select **OpenAI-compatible**, and enter the model manually if `/models` is unavailable.
-
-Other reverse proxies (Nginx, Vercel, Netlify) work the same way: forward `/proxy/*` to the target service, add CORS headers, and handle `OPTIONS` with `204`.
+A purely static build can only call APIs that allow browser cross-origin requests. If the provider does not return `Access-Control-Allow-Origin` or handle `OPTIONS`, the browser blocks the request before the actual call and the app reports a network error. Static hosting cannot fix this by itself; use a provider with CORS enabled or deploy a reverse proxy that forwards requests and adds the required CORS headers.
 
 ## Data and storage
 
@@ -88,7 +57,6 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | Command       | Description                  |
 | ------------- | ---------------------------- |
 | `pnpm dev`    | Start the development server |
-| `pnpm proxy`  | Serve `dist/` and proxy CORS-blocked APIs |
 | `pnpm build`  | Build into `dist/`           |
 | `pnpm type`   | Run TypeScript type checks   |
 | `pnpm lint`   | Lint with oxlint             |

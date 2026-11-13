@@ -40,40 +40,9 @@ pnpm build
 
 设置 → 数据管理 → 对话接口支持任意 OpenAI 兼容的接口地址。填写 API Key 后，可通过 `/v1/models` 读取模型，也可以手动填写模型名。三方模型可调用 `deepseek_web_search` 工具执行网页搜索；额外配置 DeepSeek API Key 后即可使用搜索、朗读和语音输入。OpenAI 兼容接口的对话标题由本地生成，日期与位置信息会注入 system 消息。附件上传仍只支持 DeepSeek 接口格式。
 
-### 本地 CORS 代理
+### 静态部署限制
 
-部分 API 服务不返回 CORS 响应头，浏览器会直接拦截请求。项目自带一个本地代理，既托管 `dist/`，也把 `/proxy/*` 转发到目标服务：
-
-```sh
-pnpm build
-TARGET_BASE=https://developer.amd.com.cn/radeon/api pnpm proxy
-```
-
-浏览器打开 `http://127.0.0.1:8787`，设置中的接口地址填写：
-
-```text
-http://127.0.0.1:8787/proxy
-```
-
-`TARGET_BASE` 填服务根地址，不要带 `/v1`；如果带了会自动去掉。需要在多个供应商之间切换时，可以把目标编码到 URL 里：
-
-```sh
-node -e "console.log('http://127.0.0.1:8787/proxy/'+Buffer.from(process.argv[1]).toString('base64url'))" https://developer.amd.com.cn/radeon/api
-```
-
-把输出结果作为接口地址填入即可。代理默认只监听 `127.0.0.1`，不要暴露到公网。
-
-### 静态 Release 与托管代理
-
-静态 ZIP 或 GitHub Pages 部署没有后端，无法自己运行 `scripts/proxy.mjs`。可以选择用本地代理托管静态产物（`pnpm proxy`），或者部署一次托管代理，让静态 Release 使用代理地址。
-
-仓库提供了可直接部署的 Cloudflare Worker 示例：[`deploy/cloudflare-worker.js`](deploy/cloudflare-worker.js)。
-
-1. 创建 Worker，设置 `TARGET_BASE` 为 API 服务根地址，例如 `https://developer.amd.com.cn/radeon/api`。
-2. 设置 `ALLOWED_ORIGIN` 为静态站点来源，例如 `https://xiaoshumiwm.github.io`。
-3. 在静态应用的接口地址中填写 `https://<worker-host>/proxy`，接口格式选择 **OpenAI 兼容**；如果 `/models` 不可用，手动填写模型名。
-
-Nginx、Vercel、Netlify 等反向代理同理：把 `/proxy/*` 转发到目标服务，补上 CORS 响应头，并用 `204` 处理 `OPTIONS`。
+纯静态构建只能调用允许浏览器跨域的服务。如果服务端不返回 `Access-Control-Allow-Origin` 或不处理 `OPTIONS`，浏览器会在真正请求发出前拦截，界面会显示网络异常。静态托管本身无法解决，需要使用支持 CORS 的服务，或部署一层反向代理，由代理转发请求并补上 CORS 响应头。
 
 ## 数据
 
@@ -88,7 +57,6 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | 命令          | 用途                |
 | ------------- | ------------------- |
 | `pnpm dev`    | 启动开发服务器      |
-| `pnpm proxy`  | 托管 `dist/` 并代理 CORS 受限的 API |
 | `pnpm build`  | 构建到 `dist/`      |
 | `pnpm type`   | TypeScript 类型检查 |
 | `pnpm lint`   | oxlint 检查         |

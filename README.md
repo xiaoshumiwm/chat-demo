@@ -40,6 +40,29 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 
 Settings → Data → Chat API accepts any OpenAI-compatible base URL. Enter an API Key and either load models from `/v1/models` or type a model name manually. Third-party models can call a `deepseek_web_search` tool for web search; configure a separate DeepSeek API Key to execute search, read-aloud, and voice input. Chat titles are generated locally for OpenAI-compatible APIs, and the configured date/location context is injected into the system message. File attachments remain limited to the DeepSeek API format.
 
+### Local proxy for CORS
+
+Some API providers reject browser requests because they do not return CORS headers. The bundled proxy serves `dist/` and forwards `/proxy/*` to a target service:
+
+```sh
+pnpm build
+TARGET_BASE=https://developer.amd.com.cn/radeon/api pnpm proxy
+```
+
+Open `http://127.0.0.1:8787` and use this base URL in Settings:
+
+```text
+http://127.0.0.1:8787/proxy
+```
+
+`TARGET_BASE` should be the service root without `/v1`; a trailing `/v1` is stripped automatically. To switch providers without restarting, encode the target in the URL:
+
+```sh
+node -e "console.log('http://127.0.0.1:8787/proxy/'+Buffer.from(process.argv[1]).toString('base64url'))" https://developer.amd.com.cn/radeon/api
+```
+
+Paste the output as the base URL. The proxy listens on `127.0.0.1` by default; do not expose it to the public internet.
+
 ## Data and storage
 
 Your API keys and settings are stored in the browser's localStorage. Conversations and original attachments are stored in IndexedDB. Local data is isolated by browser profile and site origin. Sending messages, uploading attachments, and using speech features sends the relevant content to the configured API service.
@@ -53,6 +76,7 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | Command       | Description                  |
 | ------------- | ---------------------------- |
 | `pnpm dev`    | Start the development server |
+| `pnpm proxy`  | Serve `dist/` and proxy CORS-blocked APIs |
 | `pnpm build`  | Build into `dist/`           |
 | `pnpm type`   | Run TypeScript type checks   |
 | `pnpm lint`   | Lint with oxlint             |

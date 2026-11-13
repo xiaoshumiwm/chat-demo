@@ -40,6 +40,29 @@ pnpm build
 
 设置 → 数据管理 → 对话接口支持任意 OpenAI 兼容的接口地址。填写 API Key 后，可通过 `/v1/models` 读取模型，也可以手动填写模型名。三方模型可调用 `deepseek_web_search` 工具执行网页搜索；额外配置 DeepSeek API Key 后即可使用搜索、朗读和语音输入。OpenAI 兼容接口的对话标题由本地生成，日期与位置信息会注入 system 消息。附件上传仍只支持 DeepSeek 接口格式。
 
+### 本地 CORS 代理
+
+部分 API 服务不返回 CORS 响应头，浏览器会直接拦截请求。项目自带一个本地代理，既托管 `dist/`，也把 `/proxy/*` 转发到目标服务：
+
+```sh
+pnpm build
+TARGET_BASE=https://developer.amd.com.cn/radeon/api pnpm proxy
+```
+
+浏览器打开 `http://127.0.0.1:8787`，设置中的接口地址填写：
+
+```text
+http://127.0.0.1:8787/proxy
+```
+
+`TARGET_BASE` 填服务根地址，不要带 `/v1`；如果带了会自动去掉。需要在多个供应商之间切换时，可以把目标编码到 URL 里：
+
+```sh
+node -e "console.log('http://127.0.0.1:8787/proxy/'+Buffer.from(process.argv[1]).toString('base64url'))" https://developer.amd.com.cn/radeon/api
+```
+
+把输出结果作为接口地址填入即可。代理默认只监听 `127.0.0.1`，不要暴露到公网。
+
 ## 数据
 
 API Key 和设置保存在浏览器 localStorage，会话及附件原件保存在 IndexedDB，本地数据按浏览器用户配置和站点源（origin）隔离。发送对话、上传附件和使用语音功能时，相应内容会提交给配置的 API 服务。
@@ -53,6 +76,7 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | 命令          | 用途                |
 | ------------- | ------------------- |
 | `pnpm dev`    | 启动开发服务器      |
+| `pnpm proxy`  | 托管 `dist/` 并代理 CORS 受限的 API |
 | `pnpm build`  | 构建到 `dist/`      |
 | `pnpm type`   | TypeScript 类型检查 |
 | `pnpm lint`   | oxlint 检查         |

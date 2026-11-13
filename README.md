@@ -63,6 +63,18 @@ node -e "console.log('http://127.0.0.1:8787/proxy/'+Buffer.from(process.argv[1])
 
 Paste the output as the base URL. The proxy listens on `127.0.0.1` by default; do not expose it to the public internet.
 
+### Static release and hosted proxies
+
+A static ZIP or GitHub Pages deployment has no backend, so it cannot run `scripts/proxy.mjs` by itself. Either serve the static build through the local proxy (`pnpm proxy`), or deploy a hosted proxy once and point the static release at it.
+
+A ready-to-deploy Cloudflare Worker example is available at [`deploy/cloudflare-worker.js`](deploy/cloudflare-worker.js):
+
+1. Create a Worker and set `TARGET_BASE` to the API service root, for example `https://developer.amd.com.cn/radeon/api`.
+2. Set `ALLOWED_ORIGIN` to the static release origin, for example `https://xiaoshumiwm.github.io`.
+3. In the static app, use `https://<worker-host>/proxy` as the base URL, select **OpenAI-compatible**, and enter the model manually if `/models` is unavailable.
+
+Other reverse proxies (Nginx, Vercel, Netlify) work the same way: forward `/proxy/*` to the target service, add CORS headers, and handle `OPTIONS` with `204`.
+
 ## Data and storage
 
 Your API keys and settings are stored in the browser's localStorage. Conversations and original attachments are stored in IndexedDB. Local data is isolated by browser profile and site origin. Sending messages, uploading attachments, and using speech features sends the relevant content to the configured API service.

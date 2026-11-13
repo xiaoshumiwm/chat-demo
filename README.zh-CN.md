@@ -63,6 +63,18 @@ node -e "console.log('http://127.0.0.1:8787/proxy/'+Buffer.from(process.argv[1])
 
 把输出结果作为接口地址填入即可。代理默认只监听 `127.0.0.1`，不要暴露到公网。
 
+### 静态 Release 与托管代理
+
+静态 ZIP 或 GitHub Pages 部署没有后端，无法自己运行 `scripts/proxy.mjs`。可以选择用本地代理托管静态产物（`pnpm proxy`），或者部署一次托管代理，让静态 Release 使用代理地址。
+
+仓库提供了可直接部署的 Cloudflare Worker 示例：[`deploy/cloudflare-worker.js`](deploy/cloudflare-worker.js)。
+
+1. 创建 Worker，设置 `TARGET_BASE` 为 API 服务根地址，例如 `https://developer.amd.com.cn/radeon/api`。
+2. 设置 `ALLOWED_ORIGIN` 为静态站点来源，例如 `https://xiaoshumiwm.github.io`。
+3. 在静态应用的接口地址中填写 `https://<worker-host>/proxy`，接口格式选择 **OpenAI 兼容**；如果 `/models` 不可用，手动填写模型名。
+
+Nginx、Vercel、Netlify 等反向代理同理：把 `/proxy/*` 转发到目标服务，补上 CORS 响应头，并用 `204` 处理 `OPTIONS`。
+
 ## 数据
 
 API Key 和设置保存在浏览器 localStorage，会话及附件原件保存在 IndexedDB，本地数据按浏览器用户配置和站点源（origin）隔离。发送对话、上传附件和使用语音功能时，相应内容会提交给配置的 API 服务。

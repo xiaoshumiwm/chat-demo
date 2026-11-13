@@ -40,9 +40,15 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 
 Settings → Data → Chat API accepts any OpenAI-compatible base URL. Enter an API Key and either load models from `/v1/models` or type a model name manually. Third-party models can call a `deepseek_web_search` tool for web search; configure a separate DeepSeek API Key to execute search, read-aloud, and voice input. Chat titles are generated locally for OpenAI-compatible APIs, and the configured date/location context is injected into the system message. File attachments remain limited to the DeepSeek API format.
 
-### Static hosting limitation
+### Browser CORS limitation
 
-A purely static build can only call APIs that allow browser cross-origin requests. If the provider does not return `Access-Control-Allow-Origin` or handle `OPTIONS`, the browser blocks the request before the actual call and the app reports a network error. Static hosting cannot fix this by itself; use a provider with CORS enabled or deploy a reverse proxy that forwards requests and adds the required CORS headers.
+Browser requests can only call APIs that return CORS headers and handle `OPTIONS`. This applies equally to `pnpm dev`, a plain static file server, and a static release. Changing the port or serving `dist/index.html` directly does not remove the restriction.
+
+- `pnpm dev`: requests still go directly to the configured API by default. If the provider does not support CORS, configure `devServer.proxy` in `rspack.config.ts`.
+- Static release: static hosting has no backend. Deploy a reverse proxy that forwards requests and adds CORS headers, or use a provider that enables CORS.
+- Opening `dist/index.html` directly: the origin is `null`, which makes CORS checks stricter.
+
+If the provider does not return `Access-Control-Allow-Origin` or handle `OPTIONS`, the browser blocks the actual request before it is sent and the app reports a network error.
 
 ## Data and storage
 

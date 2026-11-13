@@ -40,9 +40,15 @@ pnpm build
 
 设置 → 数据管理 → 对话接口支持任意 OpenAI 兼容的接口地址。填写 API Key 后，可通过 `/v1/models` 读取模型，也可以手动填写模型名。三方模型可调用 `deepseek_web_search` 工具执行网页搜索；额外配置 DeepSeek API Key 后即可使用搜索、朗读和语音输入。OpenAI 兼容接口的对话标题由本地生成，日期与位置信息会注入 system 消息。附件上传仍只支持 DeepSeek 接口格式。
 
-### 静态部署限制
+### 浏览器 CORS 限制
 
-纯静态构建只能调用允许浏览器跨域的服务。如果服务端不返回 `Access-Control-Allow-Origin` 或不处理 `OPTIONS`，浏览器会在真正请求发出前拦截，界面会显示网络异常。静态托管本身无法解决，需要使用支持 CORS 的服务，或部署一层反向代理，由代理转发请求并补上 CORS 响应头。
+浏览器只能直接调用返回 CORS 响应头并正确处理 `OPTIONS` 的接口。这对 `pnpm dev`、普通静态文件服务器和静态 Release 都成立；换端口或直接打开 `dist/index.html` 都不会解除限制。
+
+- `pnpm dev`：默认仍然由浏览器直接请求配置的 API。如果服务商不支持 CORS，需要在 `rspack.config.ts` 中配置 `devServer.proxy`。
+- 静态 Release：静态托管没有后端，需要部署一层反向代理，由代理转发请求并补上 CORS 响应头，或者改用支持 CORS 的服务商。
+- 直接打开 `dist/index.html`：Origin 为 `null`，CORS 限制会更严格。
+
+如果服务端不返回 `Access-Control-Allow-Origin` 或不处理 `OPTIONS`，浏览器会在真正请求发出前拦截，界面会显示网络错误。
 
 ## 数据
 

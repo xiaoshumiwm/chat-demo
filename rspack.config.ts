@@ -16,6 +16,51 @@ const cssLoader = {
   options: { targets },
 }
 
+/**
+ * 生成开发代理的 pathRewrite：去掉本地前缀得到上游路径；
+ * 上游在域名之后还有固定路径（如 /radeon/api）时自动补齐，
+ * 因此短前缀和与上游一致的完整路径两种写法都可用。
+ */
+const rewriteProxyPath =
+  (prefix: string, upstreamPath = '') =>
+  (pathname: string): string => {
+    const rest = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname
+    if (!upstreamPath) {
+      return rest
+    }
+    return rest === upstreamPath || rest.startsWith(`${upstreamPath}/`)
+      ? rest
+      : `${upstreamPath}${rest}`
+  }
+
+/**
+ * 浏览器直接请求不支持 CORS 的接口会被拦截，这里用开发服务器做同源代理：
+ * 设置中的接口地址填本地前缀（/sensenova、/tecoapi、/amd），请求由本服务器转发。
+ */
+const apiProxy = [
+  {
+    // /sensenova/v1/** → https://token.sensenova.cn/v1/**
+    pathFilter: '/sensenova',
+    target: 'https://token.sensenova.cn',
+    changeOrigin: true,
+    pathRewrite: rewriteProxyPath('/sensenova'),
+  },
+  {
+    // /tecoapi/v1/** → https://tecoapi.thuwayteczz.com/v1/**
+    pathFilter: '/tecoapi',
+    target: 'https://tecoapi.thuwayteczz.com',
+    changeOrigin: true,
+    pathRewrite: rewriteProxyPath('/tecoapi'),
+  },
+  {
+    // /amd/v1/** → https://developer.amd.com.cn/radeon/api/v1/**
+    pathFilter: '/amd',
+    target: 'https://developer.amd.com.cn',
+    changeOrigin: true,
+    pathRewrite: rewriteProxyPath('/amd', '/radeon/api'),
+  },
+]
+
 type ConfigOptions = {
   /** 公开 API 的地址，注入为 __API_ORIGIN__ */
   apiOrigin?: string
@@ -86,7 +131,7 @@ export const createConfig = ({
     }),
   ],
   performance: { hints: false },
-  devServer: { port: 8090, ...devServer },
+  devServer: { port: 8090, proxy: apiProxy, ...devServer },
 })
 
 // eslint-disable-next-line import/no-default-export

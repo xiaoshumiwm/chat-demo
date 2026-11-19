@@ -38,7 +38,7 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 
 ## Custom API provider
 
-Settings → Data → Chat API accepts any OpenAI-compatible base URL. Enter an API Key and either load models from `/v1/models` or type a model name manually. Third-party models can call a `deepseek_web_search` tool for web search; configure a separate DeepSeek API Key to execute search, read-aloud, and voice input. Chat titles are generated locally for OpenAI-compatible APIs, and the configured date/location context is injected into the system message. File attachments remain limited to the DeepSeek API format.
+Settings → Data → Chat API accepts any OpenAI-compatible base URL. Enter an API Key and either load models from `/v1/models` or type a model name manually. Third-party models can call a `deepseek_web_search` tool for web search; configure a separate DeepSeek API Key to execute search, read-aloud, and voice input. Chat titles are generated locally for OpenAI-compatible APIs, and the configured date/location context is injected into the system message. Plain-text attachments are sent inline for OpenAI-compatible APIs (base64 file content blocks, falling back to plain-text parts when the API rejects file blocks); images and PDFs still require the DeepSeek API format.
 
 ### Browser CORS limitation
 
@@ -49,6 +49,16 @@ Browser requests can only call APIs that return CORS headers and handle `OPTIONS
 - Opening `dist/index.html` directly: the origin is `null`, which makes CORS checks stricter.
 
 If the provider does not return `Access-Control-Allow-Origin` or handle `OPTIONS`, the browser blocks the actual request before it is sent and the app reports a network error.
+
+`pnpm dev` already proxies the following endpoints that do not support CORS. Set the base URL in Settings → Data → Chat API to the local path and the development server forwards requests upstream (the proxy only applies to `pnpm dev`):
+
+| Upstream endpoint                            | Base URL in Settings |
+| -------------------------------------------- | -------------------- |
+| `https://token.sensenova.cn/v1`              | `/sensenova`         |
+| `https://tecoapi.thuwayteczz.com`            | `/tecoapi`           |
+| `https://developer.amd.com.cn/radeon/api/v1` | `/amd`               |
+
+The local path may also use the full upstream form, i.e. replace `https://host` with the local prefix: `/sensenova/v1`, `/tecoapi`, `/amd/radeon/api/v1`.
 
 ## Data and storage
 

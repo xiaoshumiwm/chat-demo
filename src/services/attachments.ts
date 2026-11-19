@@ -43,6 +43,47 @@ const getMaxSizeMB = (file: File) =>
     ? MAX_USER_DATA_SIZE_MB
     : MAX_SIZE_MB
 
+/**
+ * 是否可随消息内联发送（三方 OpenAI 接口没有 file_id，不能走 Files API）：
+ * 只放行按 user_data 处理的纯文本、代码、表格与电子书；图片与需版面解析的文档仍只支持 DeepSeek。
+ * 其中 xlsx、epub 等虽然按 user_data 上传，内容却是二进制，内联会转成文本导致失真，一并排除。
+ * 添加入口用 canSendInline（File），发送链路与历史快照用 canSendInlineMeta（元数据）。
+ */
+const RICH_EXTS = new Set([
+  'xlsx',
+  'xls',
+  'epub',
+  'mobi',
+  'psd',
+  'emf',
+  'wmf',
+  'icns',
+  'tga',
+  'pcx',
+  'pnm',
+  'ppm',
+  'pgm',
+  'pbm',
+  'dds',
+  'xpm',
+  'xbm',
+  'dib',
+  'ico',
+  'cur',
+  'bmp',
+  'tif',
+  'tiff',
+  'avif',
+  'apng',
+])
+
+/** 元数据版：历史消息与会话快照里的附件没有 File 对象，按名称与图片标记判断 */
+export const canSendInlineMeta = (name: string, isImageFile: boolean) =>
+  getUploadPurpose(name, isImageFile) === 'user_data' && !RICH_EXTS.has(getFileExt(name))
+
+export const canSendInline = (file: File) =>
+  canSendInlineMeta(file.name, isImage(resolveMimeType(file)))
+
 /** 添加前校验：格式 → 大小 → 数量，任一不满足即整批不添加 */
 export const validateFiles = (files: File[], currentCount: number): TranslationMessage | null => {
   if (files.some((file) => !isAcceptedExt(file.name))) {

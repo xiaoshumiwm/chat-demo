@@ -58,11 +58,11 @@ const upload = (attachment: DraftAttachment, provider: ApiProvider) => {
   ).catch(() => {})
 }
 
-/** 整批校验通过后才创建预览和开始上传。 */
+/** 整批校验通过后才创建预览和开始上传；provider 为 null 表示不上传（三方内联发送）。 */
 export const addDraftFiles = (
   sessionId: string | null,
   files: File[],
-  provider: ApiProvider
+  provider: ApiProvider | null
 ): TranslationMessage | null => {
   if (files.length === 0) {
     return null
@@ -81,7 +81,9 @@ export const addDraftFiles = (
     }
   })
   updateDraft(sessionId, (draft) => ({ ...draft, attachments: [...draft.attachments, ...added] }))
-  added.forEach((attachment) => upload(attachment, provider))
+  if (provider) {
+    added.forEach((attachment) => upload(attachment, provider))
+  }
   return null
 }
 
@@ -96,21 +98,25 @@ export const retryDraftAttachment = (
   }
 }
 
-/** 发送按钮和实际提交共用规则：有内容，且全部附件已上传成功。 */
+/**
+ * 发送按钮和实际提交共用规则：有内容，且附件都就绪。
+ * 有上传任务的必须上传成功（拿到 serverId）；没有任务的附件走三方内联发送，
+ * 发送时由 streamReply 读取本地原件。
+ */
 export const prepareDraftMessage = (draft: Draft, tasks: Record<string, UploadTask>) => {
   const text = draft.text.trim()
   if (!text && draft.attachments.length === 0) {
     return null
   }
-  const files: (FileAttachment & { serverId: string; blob: Blob })[] = []
+  const files: (FileAttachment & { serverId: string | null; blob: Blob })[] = []
   for (const attachment of draft.attachments) {
     const task = tasks[attachment.id]
-    if (task?.status !== 'done' || !task.serverId) {
+    if (task && (task.status !== 'done' || !task.serverId)) {
       return null
     }
     files.push({
       id: attachment.id,
-      serverId: task.serverId,
+      serverId: task?.serverId ?? null,
       name: attachment.file.name,
       size: attachment.file.size,
       isImage: attachment.isImage,

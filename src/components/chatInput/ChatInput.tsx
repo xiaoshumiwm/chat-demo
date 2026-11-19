@@ -9,6 +9,7 @@ import {
 } from '../base/icons.js'
 import {
   getAttachmentProvider,
+  getChatProvider,
   setSearch,
   setThinking,
   useSettings,
@@ -31,7 +32,7 @@ import { Tooltip } from '../base/Tooltip.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
 import { DragMask, useFileDrop } from './DragMask.js'
 import { showToast } from '../base/toastState.js'
-import { ACCEPT, useUploads } from '../../services/attachments.js'
+import { ACCEPT, canSendInline, useUploads } from '../../services/attachments.js'
 import { DraftAttachments } from './DraftAttachments.js'
 import { useVoiceInput } from './useVoiceInput.js'
 import { VoiceButton } from './VoiceButton.js'
@@ -84,7 +85,8 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       return
     }
     const provider = getAttachmentProvider()
-    if (!provider) {
+    // 三方 OpenAI 接口没有 file_id：只接受可随消息内联的纯文本附件，图片等仍需 DeepSeek 上传。
+    if (!provider && !files.every(canSendInline)) {
       showToast({ key: 'attachmentsRequireDeepSeek' })
       return
     }
@@ -144,11 +146,21 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const canSend = !importingHistory && !streaming && voice.status === 'idle' && draftReady
 
   const send = () => {
+    const current = getDraft(sessionId)
     if (
       useChatStore.getState().importingHistory ||
       voice.status !== 'idle' ||
-      !prepareDraftMessage(getDraft(sessionId), useUploads.getState().tasks)
+      !prepareDraftMessage(current, useUploads.getState().tasks)
     ) {
+      return
+    }
+    // 中途切到三方接口后，草稿里可能残留图片等当前接口发不出去的附件：
+    // 发送前拦下并提示，否则附件会被静默丢弃，用户以为已发送。
+    if (
+      getChatProvider()?.format === 'openai' &&
+      current.attachments.some((attachment) => !canSendInline(attachment.file))
+    ) {
+      showToast({ key: 'attachmentsRequireDeepSeek' })
       return
     }
     // 文本与上传完成态由提交动作读取最新快照，不使用上一次渲染的草稿。

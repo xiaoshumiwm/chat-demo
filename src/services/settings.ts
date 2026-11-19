@@ -287,8 +287,8 @@ export const getDeepSeekExtensionProvider = (): ApiProvider | null => {
 }
 
 /**
- * 附件上传使用 DeepSeek Files API。OpenAI 兼容接口不认识 file_id，
- * 因此主接口不是 DeepSeek 时即使配置了扩展 Key 也不能用于附件。
+ * 附件上传使用 DeepSeek Files API，因此只在主接口是 DeepSeek 时返回。
+ * OpenAI 兼容接口没有 file_id：纯文本附件不上传，发送时把本地原件 Base64 内联进消息（见 canSendInline）。
  */
 export const getAttachmentProvider = (): ApiProvider | null => {
   const { apiBaseUrl, apiKey, apiFormat } = useSettings.getState()

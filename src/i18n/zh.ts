@@ -108,12 +108,13 @@ export const zh = {
   providerSaved: '已保存',
   deepseekExtensionTitle: 'DeepSeek 扩展功能',
   deepseekExtensionDescription:
-    '当前接口不是 DeepSeek 时，朗读、语音输入等扩展功能需要单独配置 DeepSeek API。附件仅支持 DeepSeek 接口。',
+    '当前接口不是 DeepSeek 时，朗读、语音输入等扩展功能需要单独配置 DeepSeek API。图片、PDF 等富文本附件仅支持 DeepSeek 接口，其他接口仅支持纯文本附件。',
   deepseekBaseUrl: 'DeepSeek 接口地址',
   deepseekApiKey: 'DeepSeek API Key（可选）',
   deepseekApiKeyPlaceholder: '留空表示不使用扩展功能',
   speechRequiresDeepSeek: '该功能需要 DeepSeek API，请在设置中配置',
-  attachmentsRequireDeepSeek: '附件上传仅支持 DeepSeek 接口',
+  attachmentsRequireDeepSeek:
+    '图片、PDF 等富文本附件仅支持 DeepSeek 接口，当前接口仅支持纯文本附件',
   providerConfigTitle: '配置导入导出',
   providerConfigExport: '导出配置',
   providerConfigExportDescription: '导出接口地址、模型和 API Key，便于在其他浏览器中恢复。',

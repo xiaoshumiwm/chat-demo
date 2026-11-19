@@ -113,12 +113,13 @@ export const en = {
   providerSaved: 'Saved',
   deepseekExtensionTitle: 'DeepSeek extensions',
   deepseekExtensionDescription:
-    'When the chat API is not DeepSeek, features such as read-aloud and voice input require a separate DeepSeek API. Attachments only work with DeepSeek.',
+    'When the chat API is not DeepSeek, features such as read-aloud and voice input require a separate DeepSeek API. Image and PDF attachments require the DeepSeek API; other APIs only support plain-text files.',
   deepseekBaseUrl: 'DeepSeek base URL',
   deepseekApiKey: 'DeepSeek API Key (optional)',
   deepseekApiKeyPlaceholder: 'Leave empty to disable extensions',
   speechRequiresDeepSeek: 'This feature requires a DeepSeek API. Configure it in Settings.',
-  attachmentsRequireDeepSeek: 'File attachments are only supported by the DeepSeek API',
+  attachmentsRequireDeepSeek:
+    'Image, PDF, and other rich attachments require the DeepSeek API. This API only supports plain-text files.',
   providerConfigTitle: 'Configuration import & export',
   providerConfigExport: 'Export configuration',
   providerConfigExportDescription:

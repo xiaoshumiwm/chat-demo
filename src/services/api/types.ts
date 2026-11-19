@@ -129,11 +129,17 @@ export type TextBlockParam = { type: 'text'; text: string }
 /**
  * 文件块：引用经 Files API 上传的文件，图片用 image、其余用 document；
  * 图片请求需带 anthropic-beta: files-api-2025-04-14；扩展模式不支持 document，返回 400。
+ * 三方 OpenAI 接口不接受 file_id，document 改为携带本地原件的 Base64，
+ * 由 toOpenAiMessages 转成 file 内容块随消息发送。
  */
-export type FileBlockParam = {
-  type: 'image' | 'document'
-  source: { type: 'file'; file_id: string }
-}
+export type FileBlockParam =
+  | { type: 'image'; source: { type: 'file'; file_id: string } }
+  | {
+      type: 'document'
+      source:
+        | { type: 'file'; file_id: string }
+        | { type: 'base64'; media_type: string; data: string; filename: string }
+    }
 
 /** 接口接受的调用块；历史只回传 kind 为 read_link 的调用 */
 export type ServerToolUseBlockParam = Pick<

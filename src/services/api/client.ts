@@ -270,8 +270,17 @@ type OpenAiWireToolCall = {
   function: { name: string; arguments: string }
 }
 
+type OpenAiContentPart =
+  | { type: 'text'; text: string }
+  /** 三方附件：本地原件的 Base64（data URL），对应上游的 file 内容块 */
+  | { type: 'file'; file: { filename: string; file_data: string } }
+
 type OpenAiMessage =
-  | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: OpenAiWireToolCall[] }
+  | {
+      role: 'system' | 'user' | 'assistant'
+      content: string | OpenAiContentPart[]
+      tool_calls?: OpenAiWireToolCall[]
+    }
   | { role: 'tool'; tool_call_id: string; content: string }
 
 type OpenAiToolCall = { id: string; name: string; arguments: string }
@@ -345,7 +354,11 @@ const textOf = (value: unknown): string => {
     .join('')
 }
 
-/** 把内部 Messages 请求转换为 OpenAI Chat Completions；文件和 DeepSeek 扩展全部忽略。 */
+/**
+ * 把内部 Messages 请求转换为 OpenAI Chat Completions：
+ * document 携带的本地原件 Base64 转成 file 内容块（先文件后文本）；
+ * image（file_id 引用）与 DeepSeek 扩展仍忽略。
+ */
 const toOpenAiMessages = (body: CreateMessageRequest): OpenAiMessage[] => {
   const messages: OpenAiMessage[] = []
   // DeepSeek 使用 latest_reminder 角色注入日期、位置等信息；OpenAI 兼容接口
@@ -364,14 +377,38 @@ const toOpenAiMessages = (body: CreateMessageRequest): OpenAiMessage[] => {
       continue
     }
     if (message.role === 'user') {
-      const text =
-        typeof message.content === 'string'
-          ? message.content
-          : message.content
-              .flatMap((block) => (block.type === 'text' ? [block.text] : []))
-              .join('\n')
-      if (text) {
-        messages.push({ role: 'user', content: text })
+      const fileParts: OpenAiContentPart[] = []
+      const texts: string[] = []
+      const readText = (value: string) => {
+        if (value) {
+          texts.push(value)
+        }
+      }
+      if (typeof message.content === 'string') {
+        readText(message.content)
+      } else {
+        for (const block of message.content) {
+          if (block.type === 'text') {
+            readText(block.text)
+          } else if (block.type === 'document' && block.source.type === 'base64') {
+            const { filename, media_type, data } = block.source
+            fileParts.push({
+              type: 'file',
+              file: { filename, file_data: `data:${media_type};base64,${data}` },
+            })
+          }
+        }
+      }
+      // 只有正文时保持字符串，与原有请求形状一致；有附件时按「先文件后文本」给内容块数组。
+      const content: string | OpenAiContentPart[] =
+        fileParts.length === 0
+          ? texts.join('\n')
+          : [
+              ...fileParts,
+              ...(texts.length > 0 ? [{ type: 'text' as const, text: texts.join('\n') }] : []),
+            ]
+      if (typeof content === 'string' ? content : content.length > 0) {
+        messages.push({ role: 'user', content })
       }
       continue
     }
@@ -384,6 +421,48 @@ const toOpenAiMessages = (body: CreateMessageRequest): OpenAiMessage[] => {
   }
   return messages
 }
+
+/** data URL 的 Base64 解码为 UTF-8 文本；附件入口已限制为纯文本格式（见 canSendInline）。 */
+const decodeFileData = (fileData: string): string => {
+  const comma = fileData.indexOf(',')
+  try {
+    const binary = atob(comma >= 0 ? fileData.slice(comma + 1) : fileData)
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)))
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * file 内容块降级为文本块：实测部分兼容服务不认 file 类型（400 Unsupported content part type）
+ * 或模型不支持 document 输入，此时把文件名与正文直接拼进消息，保证附件内容仍能到达模型。
+ */
+const flattenFileParts = (messages: OpenAiMessage[]): OpenAiMessage[] =>
+  messages.map((message) => {
+    if (message.role === 'tool' || typeof message.content === 'string') {
+      return message
+    }
+    return {
+      ...message,
+      content: message.content.flatMap((part): OpenAiContentPart[] =>
+        part.type === 'file'
+          ? [
+              {
+                type: 'text',
+                text: `[File: ${part.file.filename}]\n${decodeFileData(part.file.file_data)}`,
+              },
+            ]
+          : [part]
+      ),
+    }
+  })
+
+/** 消息里是否还有未降级的 file 内容块 */
+const hasFileParts = (messages: OpenAiMessage[]) =>
+  messages.some(
+    (message) =>
+      typeof message.content !== 'string' && message.content.some((part) => part.type === 'file')
+  )
 
 const readOpenAiUsage = (value: unknown): MessageUsage | undefined => {
   if (!isRecord(value)) {
@@ -634,7 +713,7 @@ async function* streamOpenAiMessage(
   signal: AbortSignal,
   search?: WebSearchExecutor
 ): AsyncGenerator<MessageStreamEvent> {
-  const messages = toOpenAiMessages(body)
+  let messages = toOpenAiMessages(body)
   const state: OpenAiStreamState = { started: false }
   let usage: MessageUsage | undefined
   let finalStop: StopReason = 'end_turn'
@@ -651,36 +730,41 @@ async function* streamOpenAiMessage(
       stopReason: 'end_turn',
       terminated: false,
     }
-    try {
-      yield* streamOpenAiRound(
-        provider,
-        { model: provider.model || body.model, messages, tools },
-        signal,
-        state,
-        result
-      )
-    } catch (error) {
-      // 部分 OpenAI 兼容服务不支持 tools；在尚未输出任何内容时退回普通对话。
-      if (
-        tools &&
-        !state.started &&
-        error instanceof ApiError &&
-        (error.status === 400 || error.status === 422)
-      ) {
+    /** 400/422 且尚未输出内容时逐级降级：先把 file 块转成文本，再关闭 tools。 */
+    let filesFlattened = false
+    let toolsDropped = false
+    for (;;) {
+      try {
+        yield* streamOpenAiRound(
+          provider,
+          {
+            model: provider.model || body.model,
+            messages,
+            tools: toolsDropped ? undefined : tools,
+          },
+          signal,
+          state,
+          result
+        )
+        break
+      } catch (error) {
+        const retryable =
+          !state.started &&
+          error instanceof ApiError &&
+          (error.status === 400 || error.status === 422)
+        if (retryable && !filesFlattened && hasFileParts(messages)) {
+          messages = flattenFileParts(messages)
+          filesFlattened = true
+        } else if (retryable && tools && !toolsDropped) {
+          toolsDropped = true
+        } else {
+          throw error
+        }
         result.text = ''
         result.toolCalls = []
         result.stopReason = 'end_turn'
         result.terminated = false
         result.usage = undefined
-        yield* streamOpenAiRound(
-          provider,
-          { model: provider.model || body.model, messages, tools: undefined },
-          signal,
-          state,
-          result
-        )
-      } else {
-        throw error
       }
     }
     if (result.usage) {

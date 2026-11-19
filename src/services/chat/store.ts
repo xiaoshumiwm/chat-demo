@@ -6,7 +6,14 @@ import { DEFAULT_DEEPSEEK_MODEL } from '../api/provider.js'
 import type { ApiProvider } from '../api/provider.js'
 import type { CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
-import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
+import {
+  cancelUpload,
+  canSendInlineMeta,
+  describeUploadError,
+  isImage,
+  uploadAttachment,
+  useUploads,
+} from '../attachments.js'
 import {
   getAttachmentProvider,
   getChatProvider,
@@ -29,6 +36,7 @@ import {
   getContextRounds,
   settleReply,
   toRequestMessages,
+  type InlineFiles,
 } from './reply.js'
 import {
   toSessionSummary,
@@ -796,6 +804,20 @@ const saveServerIds = (sessionId: string, serverIds: Map<string, string>) => {
 }
 
 /**
+ * 本地原件：先查尚未落盘的 pendingFiles（发送时写入 IndexedDB 是异步的，会与读取竞态），
+ * 已保存的再从 IndexedDB 读。找不到返回 undefined。
+ */
+const loadLocalFile = async (id: string): Promise<Blob | undefined> => {
+  for (const files of pendingFiles.values()) {
+    const stored = files.find((file) => file.id === id)
+    if (stored) {
+      return stored.blob
+    }
+  }
+  return db.loadFile(id)
+}
+
+/**
  * 附件的服务端 id：已有直接用；正在上传的等待同一任务；否则读取本地原件补传。
  * 本地也没有原件（导入的文档附件只有元数据）时返回 null，该附件只展示、不进入请求。
  */
@@ -810,11 +832,59 @@ const ensureServerId = async (
   if (task?.status === 'done') {
     return task.serverId
   }
-  const blob = await db.loadFile(file.id)
+  const blob = await loadLocalFile(file.id)
   if (!blob) {
     return null
   }
   return uploadAttachment(provider, file.id, blob, file.name, file.isImage)
+}
+
+/** Blob → Base64 字符串（不含 data: 前缀） */
+const toBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('read attachment failed'))
+    reader.readAsDataURL(blob)
+  })
+
+/**
+ * 三方 OpenAI 接口没有 file_id：把本次请求用到的、当前接口可内联的附件读成本地原件的 Base64，
+ * 随消息内联发送。图片与富文本附件（中途切换接口后可能残留）不内联，落到 file_id 分支被三方忽略，
+ * 避免二进制被拍平成乱码；没有原件的附件同样跳过（只展示、不进入请求），与 DeepSeek 缺 serverId 一致。
+ */
+const loadInlineFiles = async (request: Request): Promise<InlineFiles> => {
+  const targets = new Map<string, FileAttachment>()
+  const collect = (files: FileAttachment[]) => {
+    for (const file of files) {
+      if (
+        !targets.has(file.id) &&
+        canSendInlineMeta(file.name, file.isImage || isImage(file.mimeType))
+      ) {
+        targets.set(file.id, file)
+      }
+    }
+  }
+  collect(request.question.files)
+  for (const [user] of getContextRounds(request.history)) {
+    collect(user.files)
+  }
+  const inline: InlineFiles = new Map()
+  await Promise.all(
+    [...targets.values()].map(async (file) => {
+      const blob = await loadLocalFile(file.id)
+      if (blob) {
+        inline.set(file.id, {
+          media_type: file.mimeType || blob.type || 'application/octet-stream',
+          data: await toBase64(blob),
+        })
+      }
+    })
+  )
+  return inline
 }
 
 /** 用会话里的最新消息替换请求快照：重传前会重置附件的 serverId，快照必须跟着更新 */
@@ -844,7 +914,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   // 服务端判定 file_id 失效时会清掉会话里的 serverId，先用最新消息替换请求快照，
   // 否则快照里仍是旧 id，补传会直接复用它。
   request = refreshRequest(sessionId, request)
-  // OpenAI 兼容接口不接受 DeepSeek 的 file_id；没有可用文件服务时按纯文本发送。
+  // OpenAI 兼容接口没有 Files API：附件不补 serverId，由 streamReply 读本地原件内联发送。
   const provider = getAttachmentProvider()
   if (!provider) {
     return request
@@ -985,7 +1055,8 @@ const waitForRetry = (attempt: number, signal: AbortSignal) =>
   })
 
 /**
- * 请求并消费流：先补齐附件的 serverId，再发请求；流式增量按动画帧刷新内存，完成、失败或停止后落盘。
+ * 请求并消费流：先补齐附件的 serverId（三方接口改为读取本地原件内联），再发请求；
+ * 流式增量按动画帧刷新内存，完成、失败或停止后落盘。
  * 补传失败时回复记为 upload 错误，可重试。
  * 服务端判定 file_id 失效时重新补传后重发，退避重试且次数有上限，超过则按原始报错收尾。
  */
@@ -1011,10 +1082,13 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       let receivedContent = false
       try {
         const prepared = await prepareFiles(sessionId, request, controller.signal)
+        // 三方接口没有 file_id，发送前把附件的本地原件读成 Base64；读取失败按上传失败处理。
+        const provider = getChatProvider()
+        const inlineFiles =
+          provider?.format === 'openai' ? await loadInlineFiles(prepared) : undefined
         preparing = false
         // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
         const settings = useSettings.getState()
-        const provider = getChatProvider()
         if (!provider) {
           throw new ApiError('http', { key: 'apiKeyInvalidRetry' }, 401)
         }
@@ -1049,7 +1123,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           prepared.question,
           prepared.prefix,
           initial.thinking ?? false,
-          latestReminder
+          latestReminder,
+          inlineFiles
         )
         const events = streamMessage(
           provider,

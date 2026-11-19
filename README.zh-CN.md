@@ -38,7 +38,7 @@ pnpm build
 
 ## 自定义 API
 
-设置 → 数据管理 → 对话接口支持任意 OpenAI 兼容的接口地址。填写 API Key 后，可通过 `/v1/models` 读取模型，也可以手动填写模型名。三方模型可调用 `deepseek_web_search` 工具执行网页搜索；额外配置 DeepSeek API Key 后即可使用搜索、朗读和语音输入。OpenAI 兼容接口的对话标题由本地生成，日期与位置信息会注入 system 消息。附件上传仍只支持 DeepSeek 接口格式。
+设置 → 数据管理 → 对话接口支持任意 OpenAI 兼容的接口地址。填写 API Key 后，可通过 `/v1/models` 读取模型，也可以手动填写模型名。三方模型可调用 `deepseek_web_search` 工具执行网页搜索；额外配置 DeepSeek API Key 后即可使用搜索、朗读和语音输入。OpenAI 兼容接口的对话标题由本地生成，日期与位置信息会注入 system 消息。纯文本附件在 OpenAI 兼容接口下以内联的 Base64 文件内容块随消息发送（接口不接受 file 块时自动降级为文本块）；图片、PDF 等富文本附件仍需 DeepSeek 接口格式。
 
 ### 浏览器 CORS 限制
 
@@ -49,6 +49,16 @@ pnpm build
 - 直接打开 `dist/index.html`：Origin 为 `null`，CORS 限制会更严格。
 
 如果服务端不返回 `Access-Control-Allow-Origin` 或不处理 `OPTIONS`，浏览器会在真正请求发出前拦截，界面会显示网络错误。
+
+`pnpm dev` 已为下列不支持 CORS 的接口配置好开发服务器代理。在设置 → 数据管理 → 对话接口中把接口地址改成本地路径即可，请求会由开发服务器转发到上游（代理只在 `pnpm dev` 下生效）：
+
+| 上游接口地址                                 | 设置中的接口地址 |
+| -------------------------------------------- | ---------------- |
+| `https://token.sensenova.cn/v1`              | `/sensenova`     |
+| `https://tecoapi.thuwayteczz.com`            | `/tecoapi`       |
+| `https://developer.amd.com.cn/radeon/api/v1` | `/amd`           |
+
+本地路径也可以写成与上游一致的完整形式，即把地址中的 `https://域名` 换成本地前缀：`/sensenova/v1`、`/tecoapi`、`/amd/radeon/api/v1`。
 
 ## 数据
 
